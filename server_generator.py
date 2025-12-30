@@ -7,27 +7,31 @@ from fastapi.responses import StreamingResponse
 
 app = FastAPI()
 
-# 1. The Generator Logic (Simulates your Sensor Data)
+# 1. Add a health check to confirm server is ALIVE
+@app.get("/")
+def healthCheck():
+    return {"status": "running", "message": "Go to /stream to see data"}
+
+# 2. Generator Logic
 async def generateSensorStream():
     while True:
-        # Create fake data
         data = {
             "sensorId": f"sensor_{random.randint(1, 3):02d}",
             "temperature": round(random.uniform(20.0, 35.0), 2),
             "timestamp": int(time.time()),
             "status": random.choice(["OK", "WARNING"])
         }
-        
-        # Serialize to JSON and add a newline (critical for streaming)
         yield json.dumps(data) + "\n"
-        
-        # Control the speed (1 message per second)
         await asyncio.sleep(1)
 
-# 2. The Endpoint (Your laptop connects here)
 @app.get("/stream")
 async def streamEndpoint():
     print("--> New client connected to stream")
-    return StreamingResponse(generateSensorStream(), media_type="application/x-ndjson")
+    
+    # 3. CRITICAL FIX: Disable Buffering in headers
+    response = StreamingResponse(generateSensorStream(), media_type="application/x-ndjson")
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["X-Accel-Buffering"] = "no" # Tells Koyeb/Nginx to send data INSTANTLY
+    return response
 
-# To run locally for testing: uvicorn server_generator:app --reload
+# CMD: uvicorn server_generator:app --host 0.0.0.0 --port 8000
